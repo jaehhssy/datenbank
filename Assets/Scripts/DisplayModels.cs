@@ -3,11 +3,20 @@ using UnityEngine;
 using Mono.Data.Sqlite;
 using System.Data;
 using System.IO;
+#if UNITY_WSA && !UNITY_EDITOR
+using System.Threading.Tasks;
+using Windows.Storage;
+using System;
+#endif
 
 public class DisplayModels : MonoBehaviour
 {
     public string DataBaseName; // Database name
-    public GameObject[] emptyGameObjects; // Array for empty GameObjects with fixed positions
+    public GameObject emptyGameObject = null;
+
+    private void Start()
+    {
+    }
 
     public static class SetDataBaseClass
     {
@@ -15,28 +24,68 @@ public class DisplayModels : MonoBehaviour
         {
             string dbPath = "";
 #if UNITY_EDITOR
-            dbPath = Path.Combine(Application.streamingAssetsPath, dbName);
+                dbPath = Path.Combine(Application.streamingAssetsPath, dbName);
 #elif UNITY_WSA
-            string streamingAssetsPath = Path.Combine(Application.streamingAssetsPath, dbName);
-            dbPath = Path.Combine(Application.persistentDataPath, dbName);
+                string streamingAssetsPath = Path.Combine(Application.streamingAssetsPath, dbName);
+                dbPath = Path.Combine(Application.persistentDataPath, dbName);
 
-            if (!File.Exists(dbPath))
-            {
-                Debug.Log($"Copying database from {streamingAssetsPath} to {dbPath}");
-                CopyDatabase(streamingAssetsPath, dbPath);
-            }
+                if (!File.Exists(dbPath))
+                {
+                    Debug.Log($"Database file does not exist at {dbPath}. Copying from {streamingAssetsPath}.");
+                    CopyDatabase(streamingAssetsPath, dbPath).Wait();
+                }
+                else
+                {
+                    Debug.Log("Database already exists at: " + dbPath);
+                }
 #else
             dbPath = Path.Combine(Application.streamingAssetsPath, dbName);
 #endif
+
             string connString = "URI=file:" + dbPath;
             Debug.Log("Database path: " + dbPath);
             return connString;
         }
 
+#if UNITY_WSA && !UNITY_EDITOR
+            private static async Task CopyDatabase(string sourcePath, string destinationPath)
+            {
+                try
+                {
+                    StorageFolder storageFolder = ApplicationData.Current.LocalFolder;
+                    StorageFile destinationFile = await storageFolder.CreateFileAsync(Path.GetFileName(destinationPath), CreationCollisionOption.ReplaceExisting);
+
+                    StorageFile sourceFile = await StorageFile.GetFileFromApplicationUriAsync(new Uri(sourcePath));
+                    await sourceFile.CopyAndReplaceAsync(destinationFile);
+
+                    Debug.Log("Database copied successfully.");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError("Error copying database: " + ex.Message);
+                }
+            }
+#else
         private static void CopyDatabase(string sourcePath, string destinationPath)
         {
-            File.Copy(sourcePath, destinationPath, true);
+            try
+            {
+                if (File.Exists(sourcePath))
+                {
+                    File.Copy(sourcePath, destinationPath, true);
+                    Debug.Log("Database copied successfully.");
+                }
+                else
+                {
+                    Debug.LogError("Source database file does not exist: " + sourcePath);
+                }
+            }
+            catch (IOException ex)
+            {
+                Debug.LogError("Error copying database: " + ex.Message);
+            }
         }
+#endif
     }
 
     public void DisplayModelById(int productId)
@@ -92,20 +141,10 @@ public class DisplayModels : MonoBehaviour
             }
         }
 
-        // Check if there are enough empty GameObjects
-        if (emptyGameObjects.Length < modelPaths.Count)
+        if (transform.childCount > 0)
         {
-            Debug.LogError("Not enough empty game objects available.");
-            return;
-        }
-
-        // Remove any existing models from the empty GameObjects
-        foreach (GameObject emptyGameObject in emptyGameObjects)
-        {
-            foreach (Transform child in emptyGameObject.transform)
-            {
-                Destroy(child.gameObject);
-            }
+            GameObject childObject = transform.GetChild(0).gameObject;
+            Destroy(childObject);
         }
 
         // Assign models to empty GameObjects
@@ -114,11 +153,10 @@ public class DisplayModels : MonoBehaviour
             string modelName = modelPaths[i]; // Filename without the extension
             GameObject modelPrefab = Resources.Load<GameObject>(modelName);
 
-            if (modelPrefab != null && i < emptyGameObjects.Length)
+            if (modelPrefab != null)
             {
-                GameObject emptyGameObject = emptyGameObjects[i];
-                GameObject modelInstance = Instantiate(modelPrefab, emptyGameObject.transform);
-                modelInstance.transform.localScale = new Vector3(500f, 500f, 500f); // Set scale as needed
+                GameObject modelInstance = Instantiate(modelPrefab, gameObject.transform);
+                modelInstance.transform.localScale = new Vector3(1f, 1f, 1f); // Set scale as needed
 
                 // Optional: Make other transformations if necessary
             }
@@ -127,5 +165,14 @@ public class DisplayModels : MonoBehaviour
                 Debug.LogError("Unable to load model or not enough empty game objects available for model: " + modelName);
             }
         }
+    }
+
+public void DisplayModelById1()
+    {
+        DisplayModelById(1);
+    }
+    public void DisplayModelById2()
+    {
+        DisplayModelById(2);
     }
 }
